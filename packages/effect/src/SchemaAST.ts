@@ -3265,6 +3265,9 @@ export interface Union<A extends AST = AST> extends ASTNode {
   getParser(compile: SchemaParser.Compiler, compileConstructorDefault?: SchemaParser.Compiler): SchemaParser.Parser
   /** @internal */
 
+  getCandidates(input: unknown, isConstructor?: boolean): ReadonlyArray<AST>
+  /** @internal */
+
   recur(recur: (ast: AST) => AST): Union<AST>
   /** @internal */
 
@@ -3328,6 +3331,10 @@ export const Union: new<A extends AST = AST>(
     compileConstructorDefault?: SchemaParser.Compiler
   ): SchemaParser.Parser {
     return makeUnionParser(this, compile, compileConstructorDefault !== undefined)
+  }
+  /** @internal */
+  getCandidates(input: unknown, isConstructor = false): ReadonlyArray<AST> {
+    return getIndex(this.types)(input, isConstructor)
   }
   private _rebuild(
     recur: (ast: AST) => AST,

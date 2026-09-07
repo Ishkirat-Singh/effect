@@ -2,7 +2,7 @@ import type * as Arr from "../../Array.ts"
 import type * as Cause from "../../Cause.ts"
 import * as Effect from "../../Effect.ts"
 import * as Exit from "../../Exit.ts"
-import { type AST, getCandidates, type ParseOptions, type Union } from "../../SchemaAST.ts"
+import type { AST, ParseOptions, Union } from "../../SchemaAST.ts"
 import * as SchemaIssue from "../../SchemaIssue.ts"
 import type * as SchemaParser from "../../SchemaParser.ts"
 import { effectIsExit, iterateEager } from "../effect.ts"
@@ -19,7 +19,7 @@ export function makeUnionParser(
     if (input === InternalParser.missing) {
       return InternalParser.missingExit
     }
-    const candidates = getCandidates(input, ast.types, isConstructor)
+    const candidates = ast.getCandidates(input, isConstructor)
 
     if (candidates.length === 0) {
       return Effect.fail(new SchemaIssue.AnyOf(ast, [], input, options))
