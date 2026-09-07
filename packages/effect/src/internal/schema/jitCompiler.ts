@@ -4,6 +4,7 @@ import * as Codegen from "./codegen.ts"
 import {
   type CompiledDecoder,
   constructorResolver,
+  type Is,
   type Parser,
   prepareDecode,
   type ResolveEntry,
@@ -56,14 +57,17 @@ const withCompilationFallback = (
   }
 }
 
-const makeValidate = (ast: SchemaAST.AST, needsValue: boolean): Validate => {
-  const emitted = Codegen.emitValidate(ast, needsValue)
+const makeOperation = <A>(emitted: Codegen.GeneratedOperation): A => {
   const factory = globalThis.Function("C", "R", emitted.source)
-  return factory(emitted.bindings.map((binding) => binding.value), Runtime)
+  return factory(emitted.bindings.map((binding) => binding.value), Runtime) as A
 }
 
+const makeIs = (ast: SchemaAST.AST): Is => makeOperation(Codegen.emitIs(ast))
+
+const makeValidate = (ast: SchemaAST.AST): Validate => makeOperation(Codegen.emitValidate(ast))
+
 const makeTypeDecoder = (ast: SchemaAST.AST, emitIs: boolean): CompiledDecoder =>
-  Runtime.makeTypeDecoder(ast, () => makeValidate(ast, true), emitIs ? () => makeValidate(ast, false) : undefined)
+  Runtime.makeTypeDecoder(ast, () => makeValidate(ast), emitIs ? () => makeIs(ast) : undefined)
 
 const makeComposedObjectDecode = (ast: SchemaAST.Objects, resolve: ResolveParser): Parser | undefined => {
   if (ast.propertySignatures.length > Codegen.maxGeneratedNodes) return undefined

@@ -10,6 +10,9 @@ const maxGeneratedDepth = 256
 export const maxGeneratedNodes = 2048
 
 type Emission = "unsupported" | "validate" | "is"
+type Operation = "validate" | "is"
+
+const failureExpression = (operation: Operation): string => operation === "validate" ? "I" : "false"
 
 /** @internal */
 const getEmission = (
@@ -199,47 +202,48 @@ function emit(
   input: string,
   statements: Array<string>,
   emitter: Emitter,
-  needsValue: boolean,
+  operation: Operation,
   path: string
 ): string {
-  const output = emitBase(ast, input, statements, emitter, needsValue || ast.checks !== undefined, path)
+  const output = emitBase(ast, input, statements, emitter, operation, path)
+  const invalid = failureExpression(operation)
   const encodingChecks = getEncodingChecks(ast)
   const astConstant = ast.checks !== undefined || encodingChecks !== undefined
     ? constant(emitter, ast, path)
     : undefined
   if (encodingChecks !== undefined) {
-    statements.push(`if(K(${astConstant},${input},1,o))return I`)
+    statements.push(`if(K(${astConstant},${input},1,o))return ${invalid}`)
   }
-  if (ast.checks === undefined) return output
+  if (ast.checks === undefined) return operation === "validate" ? output : "true"
   const checked = variable(emitter)
   statements.push(
     `const ${checked}=${output}`,
-    `if(K(${astConstant},${checked},0,o))return I`
+    `if(K(${astConstant},${checked},0,o))return ${invalid}`
   )
-  return checked
+  return operation === "validate" ? checked : "true"
 }
 
-const emitDecoderHelper = (ast: SchemaAST.AST, emitter: Emitter, needsValue: boolean, path: string): string => {
+const emitDecoderHelper = (ast: SchemaAST.AST, emitter: Emitter, operation: Operation, path: string): string => {
   const cached = emitter.decoderHelpers.get(ast)
   if (cached !== undefined) return cached
   const name = `d${emitter.next++}`
   emitter.decoderHelpers.set(ast, name)
   const statements: Array<string> = []
-  const output = emit(ast, "i", statements, emitter, needsValue, path)
+  const output = emit(ast, "i", statements, emitter, operation, path)
   emitter.helpers.push(
     `function ${name}(i,o){${statements.join(";")};return ${output}}`
   )
   return name
 }
 
-const emitUnionHelper = (ast: SchemaAST.Union, emitter: Emitter, needsValue: boolean, path: string): string => {
+const emitUnionHelper = (ast: SchemaAST.Union, emitter: Emitter, operation: Operation, path: string): string => {
   const cached = emitter.unionHelpers.get(ast)
   if (cached !== undefined) return cached
   const name = `u${emitter.next++}`
   emitter.unionHelpers.set(ast, name)
   const entries = ast.types.map((type, index) =>
     `[${constant(emitter, type, `${path}.types[${index}]`)},${
-      emitDecoderHelper(type, emitter, needsValue, `${path}.types[${index}]`)
+      emitDecoderHelper(type, emitter, operation, `${path}.types[${index}]`)
     }]`
   )
   emitter.initializers.push(`const ${name}=new Map([${entries.join(",")}])`)
@@ -252,7 +256,7 @@ const emitIndexes = (
   output: string | undefined,
   statements: Array<string>,
   emitter: Emitter,
-  needsValue: boolean,
+  operation: Operation,
   path: string
 ): void => {
   const fixedKeys = output === undefined || ast.propertySignatures.length === 0
@@ -284,12 +288,12 @@ const emitIndexes = (
         key,
         loop,
         emitter,
-        true,
+        operation,
         `${runtimeReference("parameterFromPropertyKey")}(${signaturePath}.parameter)`
       )
     const value = variable(emitter)
     loop.push(`const ${value}=${input}[${key}]`)
-    const decoded = emit(signature.type, value, loop, emitter, needsValue, `${signaturePath}.type`)
+    const decoded = emit(signature.type, value, loop, emitter, operation, `${signaturePath}.type`)
     if (output !== undefined) {
       const assign =
         `if(${decodedKey}==="__proto__")Object.defineProperty(${output},${decodedKey},{value:${decoded},writable:true,enumerable:true,configurable:true});else ${output}[${decodedKey}]=${decoded}`
@@ -308,26 +312,30 @@ const emitBase = (
   input: string,
   statements: Array<string>,
   emitter: Emitter,
-  needsValue: boolean,
+  operation: Operation,
   path: string
 ): string => {
+  const needsValue = operation === "validate"
+  const invalid = failureExpression(operation)
   switch (ast._tag) {
     case "Null":
-      statements.push(`if(${input}!==null)return I`)
+      statements.push(`if(${input}!==null)return ${invalid}`)
       return input
     case "Undefined":
-      statements.push(`if(${input}!==void 0)return I`)
+      statements.push(`if(${input}!==void 0)return ${invalid}`)
       return input
     case "Void":
       return "void 0"
     case "Never":
-      statements.push("return I")
+      statements.push(`return ${invalid}`)
       return input
     case "Any":
     case "Unknown":
       return input
     case "ObjectKeyword":
-      statements.push(`if((${input}===null||typeof ${input}!=="object")&&typeof ${input}!=="function")return I`)
+      statements.push(
+        `if((${input}===null||typeof ${input}!=="object")&&typeof ${input}!=="function")return ${invalid}`
+      )
       return input
     case "Enum": {
       const values = constant(
@@ -335,41 +343,41 @@ const emitBase = (
         new Set(ast.enums.map((entry) => entry[1])),
         `new Set(${path}.enums.map(entry=>entry[1]))`
       )
-      statements.push(`if(!${values}.has(${input}))return I`)
+      statements.push(`if(!${values}.has(${input}))return ${invalid}`)
       return input
     }
     case "UniqueSymbol": {
       const value = constant(emitter, ast.symbol, `${path}.symbol`)
-      statements.push(`if(${input}!==${value})return I`)
+      statements.push(`if(${input}!==${value})return ${invalid}`)
       return input
     }
     case "Literal": {
       const value = constant(emitter, ast.literal, `${path}.literal`)
-      statements.push(`if(${input}!==${value})return I`)
+      statements.push(`if(${input}!==${value})return ${invalid}`)
       return input
     }
     case "String":
-      statements.push(`if(typeof ${input}!=="string")return I`)
+      statements.push(`if(typeof ${input}!=="string")return ${invalid}`)
       return input
     case "Number":
-      statements.push(`if(typeof ${input}!=="number")return I`)
+      statements.push(`if(typeof ${input}!=="number")return ${invalid}`)
       return input
     case "Boolean":
-      statements.push(`if(typeof ${input}!=="boolean")return I`)
+      statements.push(`if(typeof ${input}!=="boolean")return ${invalid}`)
       return input
     case "Symbol":
-      statements.push(`if(typeof ${input}!=="symbol")return I`)
+      statements.push(`if(typeof ${input}!=="symbol")return ${invalid}`)
       return input
     case "BigInt":
-      statements.push(`if(typeof ${input}!=="bigint")return I`)
+      statements.push(`if(typeof ${input}!=="bigint")return ${invalid}`)
       return input
     case "TemplateLiteral": {
       const template = constant(emitter, ast, path)
-      statements.push(`if(!T(${template},${input},o))return I`)
+      statements.push(`if(!T(${template},${input},o))return ${invalid}`)
       return input
     }
     case "Arrays": {
-      statements.push(`if(!Array.isArray(${input}))return I`)
+      statements.push(`if(!Array.isArray(${input}))return ${invalid}`)
       const length = variable(emitter)
       statements.push(`const ${length}=${input}.length`)
       const elementLength = ast.elements.length
@@ -379,14 +387,14 @@ const emitBase = (
       if (ast.rest.length === 0) {
         statements.push(
           minimumElementLength === elementLength
-            ? `if(${length}!==${elementLength})return I`
-            : `if(${length}<${minimumElementLength}||${length}>${elementLength})return I`
+            ? `if(${length}!==${elementLength})return ${invalid}`
+            : `if(${length}<${minimumElementLength}||${length}>${elementLength})return ${invalid}`
         )
         if (minimumElementLength === elementLength) {
           const elements = ast.elements.map((element, index) => {
             const value = variable(emitter)
             statements.push(`const ${value}=${input}[${index}]`)
-            return emit(element, value, statements, emitter, needsValue, `${path}.elements[${index}]`)
+            return emit(element, value, statements, emitter, operation, `${path}.elements[${index}]`)
           })
           return needsValue ? `[${elements.join(",")}]` : input
         }
@@ -400,7 +408,7 @@ const emitBase = (
             value,
             elementStatements,
             emitter,
-            needsValue,
+            operation,
             `${path}.elements[${index}]`
           )
           if (output !== undefined) elementStatements.push(`${output}[${index}]=${decoded}`)
@@ -412,7 +420,7 @@ const emitBase = (
         }
         return output ?? input
       }
-      statements.push(`if(${length}<${minimumElementLength + tailLength})return I`)
+      statements.push(`if(${length}<${minimumElementLength + tailLength})return ${invalid}`)
       const output = needsValue ? variable(emitter) : undefined
       if (output !== undefined) statements.push(`const ${output}=new Array(${length})`)
       for (let index = 0; index < elementLength; index++) {
@@ -423,7 +431,7 @@ const emitBase = (
           value,
           elementStatements,
           emitter,
-          needsValue,
+          operation,
           `${path}.elements[${index}]`
         )
         if (output !== undefined) elementStatements.push(`${output}[${index}]=${decoded}`)
@@ -437,7 +445,7 @@ const emitBase = (
       const restStatements: Array<string> = []
       const value = variable(emitter)
       restStatements.push(`const ${value}=${input}[${index}]`)
-      const decoded = emit(ast.rest[0], value, restStatements, emitter, needsValue, `${path}.rest[0]`)
+      const decoded = emit(ast.rest[0], value, restStatements, emitter, operation, `${path}.rest[0]`)
       if (output !== undefined) restStatements.push(`${output}[${index}]=${decoded}`)
       statements.push(
         `for(let ${index}=${elementLength};${index}<${length}-${tailLength};${index}++){${restStatements.join(";")}}`
@@ -446,20 +454,22 @@ const emitBase = (
         const inputIndex = `${length}-${tailLength - index}`
         const value = variable(emitter)
         statements.push(`const ${value}=${input}[${inputIndex}]`)
-        const decoded = emit(ast.rest[index + 1], value, statements, emitter, needsValue, `${path}.rest[${index + 1}]`)
+        const decoded = emit(ast.rest[index + 1], value, statements, emitter, operation, `${path}.rest[${index + 1}]`)
         if (output !== undefined) statements.push(`${output}[${inputIndex}]=${decoded}`)
       }
       return output ?? input
     }
     case "Objects": {
       if (ast.propertySignatures.length === 0 && ast.indexSignatures.length === 0) {
-        statements.push(`if(${input}===null||${input}===void 0)return I`)
+        statements.push(`if(${input}===null||${input}===void 0)return ${invalid}`)
         return input
       }
       statements.push(
-        `if(typeof ${input}!=="object"||${input}===null||Array.isArray(${input}))return I`
+        `if(typeof ${input}!=="object"||${input}===null||Array.isArray(${input}))return ${invalid}`
       )
-      statements.push(`if(o!==D&&o.onExcessProperty==="error"&&E(${constant(emitter, ast, path)},${input},o))return I`)
+      statements.push(
+        `if(o!==D&&o.onExcessProperty==="error"&&E(${constant(emitter, ast, path)},${input},o))return ${invalid}`
+      )
       const hasOptional = ast.propertySignatures.some((property) => isOptional(property.type))
       if (needsValue && ast.propertySignatures.length > 0 && !hasOptional) {
         const output = variable(emitter)
@@ -469,13 +479,13 @@ const emitBase = (
           const outputKey = typeof property.name === "string" && property.name !== "__proto__" ? key : `[${key}]`
           const value = variable(emitter)
           if (propertyNeedsPresenceCheck(property.name, property.type)) {
-            statements.push(`if(!(${propertyPresence(input, key, property.name)}))return I`)
+            statements.push(`if(!(${propertyPresence(input, key, property.name)}))return ${invalid}`)
           }
           statements.push(`const ${value}=${input}[${key}]`)
-          return `${outputKey}:${emit(property.type, value, statements, emitter, true, `${propertyPath}.type`)}`
+          return `${outputKey}:${emit(property.type, value, statements, emitter, operation, `${propertyPath}.type`)}`
         })
         statements.push(`const ${output}={${properties.join(",")}}`)
-        if (ast.indexSignatures.length > 0) emitIndexes(ast, input, output, statements, emitter, true, path)
+        if (ast.indexSignatures.length > 0) emitIndexes(ast, input, output, statements, emitter, operation, path)
         return output
       }
       const output = needsValue ? variable(emitter) : undefined
@@ -486,19 +496,19 @@ const emitBase = (
         const key = propertyKey(emitter, property.name, `${propertyPath}.name`)
         const value = variable(emitter)
         const propertyStatements: Array<string> = [`const ${value}=${input}[${key}]`]
-        const decoded = emit(property.type, value, propertyStatements, emitter, needsValue, `${propertyPath}.type`)
+        const decoded = emit(property.type, value, propertyStatements, emitter, operation, `${propertyPath}.type`)
         if (output !== undefined) propertyStatements.push(assignProperty(output, key, decoded, property.name))
         statements.push(
           isOptional(property.type)
             ? `if(${propertyPresence(input, key, property.name)}){${propertyStatements.join(";")}}`
             : `${
               propertyNeedsPresenceCheck(property.name, property.type)
-                ? `if(!(${propertyPresence(input, key, property.name)}))return I;`
+                ? `if(!(${propertyPresence(input, key, property.name)}))return ${invalid};`
                 : ""
             }${propertyStatements.join(";")}`
         )
       }
-      if (ast.indexSignatures.length > 0) emitIndexes(ast, input, output, statements, emitter, needsValue, path)
+      if (ast.indexSignatures.length > 0) emitIndexes(ast, input, output, statements, emitter, operation, path)
       return output ?? input
     }
     case "Union": {
@@ -507,7 +517,7 @@ const emitBase = (
         const references = ast.types.map((type, index) => lookupMemberReferences(type, `${path}.types[${index}]`))
         if (ast.options?.mode !== "oneOf") {
           const values = constant(emitter, new Set(memberValues.flat()), `new Set([${references.flat().join(",")}])`)
-          statements.push(`if(!${values}.has(${input}))return I`)
+          statements.push(`if(!${values}.has(${input}))return ${invalid}`)
         } else {
           const counts = new Map<unknown, number>()
           const valueReferences = new Map<unknown, string>()
@@ -521,7 +531,7 @@ const emitBase = (
           }
           const entries = [...counts].map(([value, count]) => `[${valueReferences.get(value)},${count}]`)
           const lookup = constant(emitter, counts, `new Map([${entries.join(",")}])`)
-          statements.push(`if(${lookup}.get(${input})!==1)return I`)
+          statements.push(`if(${lookup}.get(${input})!==1)return ${invalid}`)
         }
         return input
       }
@@ -531,23 +541,23 @@ const emitBase = (
       const index = variable(emitter)
       const decoder = variable(emitter)
       const types = constant(emitter, ast.types, `${path}.types`)
-      const decoders = emitUnionHelper(ast, emitter, needsValue, path)
+      const decoders = emitUnionHelper(ast, emitter, operation, path)
       statements.push(
         `const ${candidates}=U(${input},${types})`,
-        `let ${output}=I,${candidate},${decoder}`
+        `let ${output}=${invalid},${candidate},${decoder}`
       )
       if (ast.options?.mode !== "oneOf") {
         statements.push(
-          `for(let ${index}=0;${index}<${candidates}.length;${index}++){${decoder}=${decoders}.get(${candidates}[${index}]);${candidate}=${decoder}(${input},o);if(${candidate}!==I){${output}=${candidate};break}}`
+          `for(let ${index}=0;${index}<${candidates}.length;${index}++){${decoder}=${decoders}.get(${candidates}[${index}]);${candidate}=${decoder}(${input},o);if(${candidate}!==${invalid}){${output}=${candidate};break}}`
         )
-        statements.push(`if(${output}===I)return I`)
+        statements.push(`if(${output}===${invalid})return ${invalid}`)
       } else {
         const successes = variable(emitter)
         statements.push(`let ${successes}=0`)
         statements.push(
-          `for(let ${index}=0;${index}<${candidates}.length;${index}++){${decoder}=${decoders}.get(${candidates}[${index}]);${candidate}=${decoder}(${input},o);if(${candidate}!==I){if(++${successes}>1)return I;${output}=${candidate}}}`
+          `for(let ${index}=0;${index}<${candidates}.length;${index}++){${decoder}=${decoders}.get(${candidates}[${index}]);${candidate}=${decoder}(${input},o);if(${candidate}!==${invalid}){if(++${successes}>1)return ${invalid};${output}=${candidate}}}`
         )
-        statements.push(`if(${successes}!==1)return I`)
+        statements.push(`if(${successes}!==1)return ${invalid}`)
       }
       return output
     }
@@ -612,10 +622,12 @@ const runtimeBindings = (aliases: Readonly<Record<string, keyof typeof runtime>>
   `const {${Object.entries(aliases).map(([alias, name]) => `${name}:${alias}`).join(",")}}=R;`
 
 /** @internal */
-export const emitValidate = (ast: SchemaAST.AST, needsValue: boolean): {
+export interface GeneratedOperation {
   readonly source: string
   readonly bindings: ReadonlyArray<Binding>
-} => {
+}
+
+const emitOperation = (ast: SchemaAST.AST, operation: Operation): GeneratedOperation => {
   const emitter: Emitter = {
     statements: [],
     helpers: [],
@@ -626,22 +638,26 @@ export const emitValidate = (ast: SchemaAST.AST, needsValue: boolean): {
     constantIndexes: new Map(),
     next: 0
   }
-  const output = emit(ast, "i", emitter.statements, emitter, needsValue, "ast")
-  const source = `"use strict";${
-    runtimeBindings({
-      I: "invalid",
-      K: "failsChecks",
-      T: "matchesTemplateLiteral",
-      U: "getCandidates",
-      G: "getIndexSignatureKeys",
-      D: "defaultParseOptions",
-      E: "hasExcessProperties"
-    })
-  }${emitter.helpers.join(";")};${emitter.initializers.join(";")};return function(i,o){${
-    emitter.statements.join(";")
-  };return ${output}}`
+  const output = emit(ast, "i", emitter.statements, emitter, operation, "ast")
+  const bindings = {
+    K: "failsChecks",
+    T: "matchesTemplateLiteral",
+    U: "getCandidates",
+    G: "getIndexSignatureKeys",
+    D: "defaultParseOptions",
+    E: "hasExcessProperties"
+  } as const
+  const source = `"use strict";${runtimeBindings(operation === "validate" ? { I: "invalid", ...bindings } : bindings)}${
+    emitter.helpers.join(";")
+  };${emitter.initializers.join(";")};return function(i,o){${emitter.statements.join(";")};return ${output}}`
   return { source, bindings: emitter.bindings }
 }
+
+/** @internal */
+export const emitIs = (ast: SchemaAST.AST): GeneratedOperation => emitOperation(ast, "is")
+
+/** @internal */
+export const emitValidate = (ast: SchemaAST.AST): GeneratedOperation => emitOperation(ast, "validate")
 
 /** @internal */
 export const emitComposedObject = (ast: SchemaAST.Objects): string => {

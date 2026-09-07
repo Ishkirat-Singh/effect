@@ -10,13 +10,16 @@ import * as SchemaAST from "../../SchemaAST.ts"
 
 const helper = Codegen.runtimeReference
 
-const validator = (ast: SchemaAST.AST, needsValue: boolean): string => {
-  const emitted = Codegen.emitValidate(ast, needsValue)
+const renderOperation = (emitted: Codegen.GeneratedOperation): string => {
   return `(function(C,R){${emitted.source}})([${emitted.bindings.map((binding) => binding.reference).join(",")}],R)`
 }
 
+const validate = (ast: SchemaAST.AST): string => renderOperation(Codegen.emitValidate(ast))
+
+const is = (ast: SchemaAST.AST): string => renderOperation(Codegen.emitIs(ast))
+
 const typeDecoder = (ast: SchemaAST.AST, emitIs: boolean): string =>
-  `${helper("makeTypeDecoder")}(ast,()=>${validator(ast, true)}${emitIs ? `,()=>${validator(ast, false)}` : ""})`
+  `${helper("makeTypeDecoder")}(ast,()=>${validate(ast)}${emitIs ? `,()=>${is(ast)}` : ""})`
 
 const composedObject = (ast: SchemaAST.Objects): string =>
   `(function(context,R){${Codegen.emitComposedObject(ast)}})(${helper("makeComposedObjectContext")}(ast,${

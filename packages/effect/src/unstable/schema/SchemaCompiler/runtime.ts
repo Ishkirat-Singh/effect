@@ -537,11 +537,10 @@ const withConstructor = (decoder: CompiledDecoder, make: () => Parser): Compiled
 const makeTypeDecoder = (
   ast: SchemaAST.AST,
   makeValidate: () => Validate | undefined,
-  makeIs?: () => Validate | undefined
+  makeIs?: () => Is | undefined
 ): CompiledDecoder => ({
-  get is(): Is | undefined {
-    const generated = makeIs?.()
-    return generated === undefined ? undefined : (input, options) => generated(input, options) !== invalid
+  get is() {
+    return makeIs?.()
   },
   get validate() {
     return makeValidate()

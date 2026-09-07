@@ -126,13 +126,13 @@ describe("Schema JIT compilation fallback", () => {
     const emit = Codegen.emitValidate
     let attempts = 0
     let transformationsAtFailure = 0
-    const failure = vi.spyOn(Codegen, "emitValidate").mockImplementation((ast, needsValue) => {
+    const failure = vi.spyOn(Codegen, "emitValidate").mockImplementation((ast) => {
       if (ast === schema.ast) {
         attempts++
         transformationsAtFailure = transformations
         throw new Error("local checkpoint generation failed")
       }
-      return emit(ast, needsValue)
+      return emit(ast)
     })
     try {
       const decode = SchemaParser.decodeUnknownSync(schema)

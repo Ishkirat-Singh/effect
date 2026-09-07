@@ -109,6 +109,8 @@ for (
     "array",
     "tuple",
     "tagged",
+    "sentinel",
+    "sentinelLookup",
     "record",
     "transformed",
     "transformedStruct",

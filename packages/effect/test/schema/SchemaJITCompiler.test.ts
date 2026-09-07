@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest"
 import { Cause, Effect, Result, Schema, SchemaGetter, SchemaIssue, SchemaParser, SchemaTransformation } from "effect"
+import { SchemaCompiler } from "effect/unstable/schema"
 // oxlint-disable-next-line no-unassigned-import
 import "effect/unstable/schema/SchemaJITCompiler/enable"
 import { assertSchemaIssueError, deepStrictEqual, strictEqual, throws } from "../utils/assert.ts"
@@ -72,6 +73,17 @@ describe("SchemaJITCompiler", () => {
       assert(Cause.hasDies(error.cause as Cause.Cause<never>))
     })
     strictEqual(reads, 1)
+  })
+
+  it("does not confuse a valid value with the invalid sentinel", () => {
+    const schemas = [
+      Schema.Union([Schema.Symbol, Schema.String]),
+      Schema.Union([Schema.UniqueSymbol(SchemaCompiler.invalid), Schema.Literal("valid")])
+    ]
+    for (const schema of schemas) {
+      strictEqual(SchemaParser.is(schema)(SchemaCompiler.invalid), true)
+      strictEqual(SchemaParser.decodeUnknownSync(schema)(SchemaCompiler.invalid), SchemaCompiler.invalid)
+    }
   })
 
   it("uses default options in compiled type guards", () => {

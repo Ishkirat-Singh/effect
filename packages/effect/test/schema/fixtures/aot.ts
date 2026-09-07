@@ -1,4 +1,5 @@
 import { Effect, Option, Schema, SchemaGetter, SchemaTransformation } from "effect"
+import { invalid } from "effect/unstable/schema/SchemaCompiler"
 import { constructionSchemas } from "./construction.ts"
 
 export const key = Symbol("key")
@@ -79,6 +80,14 @@ export const synchronous = {
   oneOf: {
     schema: Schema.Union([Schema.String, Schema.Literal("a")], { mode: "oneOf" }),
     inputs: ["b", "a", false]
+  },
+  sentinel: {
+    schema: Schema.Union([Schema.Symbol, Schema.String]),
+    inputs: [invalid]
+  },
+  sentinelLookup: {
+    schema: Schema.Union([Schema.UniqueSymbol(invalid), Schema.Literal("valid")]),
+    inputs: [invalid]
   },
   symbols: {
     schema: Schema.Struct({ [key]: Schema.UniqueSymbol(token) }),
