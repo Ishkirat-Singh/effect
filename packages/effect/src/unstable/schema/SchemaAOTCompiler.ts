@@ -80,7 +80,7 @@ const decoder = (ast: SchemaAST.AST): string | undefined => {
         Codegen.emitComposedObject(ast as SchemaAST.Objects)
       }})(${helper("makeConstructionContext")}(ast,${helper("resolveEntry")}),R))`
       break
-    default:
+    case undefined:
       return decode
   }
   return `${helper("withConstructor")}(${

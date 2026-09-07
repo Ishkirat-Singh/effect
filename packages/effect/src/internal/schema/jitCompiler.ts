@@ -133,7 +133,7 @@ export const compile = (ast: SchemaAST.AST, resolve: ResolveEntry): CompiledDeco
   } catch {
     return decoder
   }
-  return Runtime.withConstructor(decoder ?? Runtime.interpretedDecoder(ast, resolve), () => {
+  return Runtime.withConstructor(decoder ?? Runtime.interpretedDecoder(ast, resolve), (): Parser => {
     try {
       switch (selection) {
         case "Class":
@@ -155,7 +155,7 @@ export const compile = (ast: SchemaAST.AST, resolve: ResolveEntry): CompiledDeco
       }
     } catch {
       // Preparing this operation has not executed any constructor or default.
+      return Runtime.compileConstructor(ast, constructorResolver(resolve))
     }
-    return Runtime.compileConstructor(ast, constructorResolver(resolve))
   })
 }
