@@ -2111,8 +2111,7 @@ function resolveSuspend(ast: SchemaAST.AST): SchemaAST.AST {
 
 function enumsToLiterals(ast: SchemaAST.Enum): SchemaAST.Union<SchemaAST.Literal> {
   return new SchemaAST.Union(
-    ast.enums.map((e) => new SchemaAST.Literal(e[1], { title: e[0] })),
-    undefined
+    ast.enums.map((e) => new SchemaAST.Literal(e[1], { title: e[0] }))
   )
 }
 

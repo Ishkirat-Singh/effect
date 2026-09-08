@@ -11,6 +11,8 @@ Add experimental JIT and AOT compilation through the existing `SchemaParser` par
 
 Install before parsers' first execution to accelerate them. JIT falls back to the interpreter when dynamic code generation is unavailable or compilation fails; parsing errors keep their normal behavior. AOT runs without dynamic code generation.
 
+For replay-safe ASTs, a failed fast validation can evaluate checks and property getters twice before producing detailed issues. Checks and Declaration recognizers must have no observable side effects, and getters must be deterministic.
+
 Construction shares the same cache, initializes independently from decoding, and does not replay defaults or constructors. Installed bundles require `decodeEffect`; optional `makeEffect` supplies construction, otherwise the interpreter handles it. Target `SchemaAST.toType(schema.ast)` for selective JIT or AOT construction. Global JIT must also precede the first maker call to optimize its entry.
 
 ### Breaking changes
@@ -20,6 +22,6 @@ Construction shares the same cache, initializes independently from decoding, and
 - Structs accept inherited declared fields, except `__proto__`. Record index signatures remain own-only. Check ownership before parsing if required.
 - `parseOptions` annotations no longer affect parsing. Pass options to parser APIs instead.
 - Remove `propertyOrder`. Output key order is unspecified, including inside checks. Remove order-dependent checks and handle presentation order explicitly.
-- Remove `concurrency` from `ParseOptions`. Children parse sequentially; use Effect concurrency combinators for independent operations.
+- Remove `concurrency` from `ParseOptions`; remove it from parser option objects. Composite children parse sequentially. Parallelize independent parse calls explicitly with Effect concurrency combinators.
 - Remove `onExcessProperty: "preserve"`. Use `Record` or `StructWithRest` with an explicit value schema. `"error"` rejects keys outside the combined declared-field and index-signature coverage, including on records.
 - `SchemaAST.Union` takes `{ mode }` instead of a mode string. Read `ast.options?.mode ?? "anyOf"` instead of `ast.mode`; regenerate persisted representations. Public `Schema.Union` calls are unchanged.
