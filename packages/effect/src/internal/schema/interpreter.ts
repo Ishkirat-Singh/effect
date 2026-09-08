@@ -12,10 +12,10 @@ export function makeConstructorParser(descriptor: SchemaAST.ConstructorDescripto
   let sourceParser: Parser
   return (input, options) => {
     if (input === InternalParser.missing) return InternalParser.missingExit
-    if (descriptor.isConstructed(input)) return InternalParser.succeed(input)
+    if (descriptor.isConstructed(input)) return InternalParser.unchangedExit
     const result = (sourceParser ??= resolve(descriptor.link.to))(input, options)
     return Effect.flatMapEager(
-      applyTransformation(result, descriptor.link.transformation, options),
+      applyTransformation(result, input, descriptor.link.transformation, options),
       InternalParser.fromOptionExit
     )
   }
@@ -31,7 +31,15 @@ export function withConstructorDefault(ast: SchemaAST.AST, parser: Parser, resol
 
 /** @internal */
 export function compileConstructor(ast: SchemaAST.AST, resolve: ResolveParser): Parser {
-  return compile(ast, resolve, (ast) => withConstructorDefault(ast, resolve(ast), resolve))
+  const resolveConstructorDefault: ResolveParser = Object.assign(
+    (ast: SchemaAST.AST) => withConstructorDefault(ast, resolve(ast), resolve),
+    { resolve: resolve.resolve }
+  )
+  return compile(
+    ast,
+    resolve,
+    resolveConstructorDefault
+  )
 }
 
 /** @internal */
@@ -61,7 +69,10 @@ export function applyChecks(ast: SchemaAST.AST, parser: Parser): Parser {
     const result = parser(input, options)
     if (effectIsExit(result)) {
       if (result._tag === "Failure") return result
-      const output = (result as InternalParser.Success<unknown, SchemaIssue.Issue>)[InternalParser.args]
+      const output = InternalParser.valueOrInput(
+        result as InternalParser.Success<unknown, SchemaIssue.Issue>,
+        input
+      )
       const issue = checkOutput(ast, input, output, options)
       return issue === undefined ? result : Effect.fail(issue)
     }

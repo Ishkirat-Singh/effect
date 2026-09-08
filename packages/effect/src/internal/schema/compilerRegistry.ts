@@ -25,6 +25,7 @@ export type Parser = Decode
 /** @internal */
 export interface ResolveParser {
   (ast: SchemaAST.AST): Parser
+  readonly resolve: ResolveEntry
 }
 
 /** @internal */
@@ -55,9 +56,17 @@ export class Entry implements CompiledDecoder {
 
   get parseEffect(): Parser {
     let parser: Parser | undefined
-    const parse: Parser = (input, options) => (parser ??= makeParser(this))(input, options)
+    const parse: Parser = (input, options) =>
+      InternalParser.materialize((parser ??= this.parser)(input, options), input)
     Object.defineProperty(this, "parseEffect", { value: parse })
     return parse
+  }
+
+  /** @internal */
+  get parser(): Parser {
+    const parser = makeParser(this)
+    Object.defineProperty(this, "parser", { value: parser })
+    return parser
   }
 
   get is(): Is | undefined {
@@ -74,7 +83,7 @@ export class Entry implements CompiledDecoder {
 
   get decodeEffect(): Decode {
     const decode = this.source === undefined
-      ? Interpreter.compile(this.ast, (ast) => this.resolve(ast).parseEffect)
+      ? Interpreter.compile(this.ast, makeResolveParser(this.resolve))
       : this.source.decodeEffect
     Object.defineProperty(this, "decodeEffect", { value: decode })
     return decode
@@ -94,7 +103,9 @@ const makeParser = (entry: CompiledDecoder): Parser => {
     if (input !== InternalParser.missing) {
       try {
         const output = validate(input, options)
-        if (output !== invalid) return InternalParser.succeed(output)
+        if (output !== invalid) {
+          return output === input ? InternalParser.unchangedExit : InternalParser.succeed(output)
+        }
       } catch (error) {
         return Effect.die(error)
       }
@@ -157,21 +168,34 @@ export const resolve = (ast: SchemaAST.AST): Entry => {
 }
 
 /** @internal */
-export const resolveParser: ResolveParser = (ast) => resolve(ast).parseEffect
+export const makeResolveParser = (
+  resolveEntry: ResolveEntry,
+  getParser: (ast: SchemaAST.AST) => Parser = (ast) => resolveEntry(ast).parser
+): ResolveParser => Object.assign(getParser, { resolve: resolveEntry })
 
 /** @internal */
-export const resolveConstructor: ResolveParser = (ast) => resolve(ast).makeEffect
+export const resolveParser: ResolveParser = makeResolveParser(resolve)
 
 /** @internal */
-export const constructorResolver = (resolve: ResolveEntry): ResolveParser => (ast) => {
-  // Declaration callbacks can use public decoders for these ASTs before invoking
-  // this constructor. Register the entry now, but leave its operations lazy.
-  const entry = resolve(ast)
-  return (input, options) => {
-    const parser = entry.makeEffect
-    return parser(input, options)
-  }
-}
+export const resolveConstructor: ResolveParser = Object.assign(
+  (ast: SchemaAST.AST) => resolve(ast).makeEffect,
+  { resolve }
+)
+
+/** @internal */
+export const constructorResolver = (resolve: ResolveEntry): ResolveParser =>
+  Object.assign(
+    (ast: SchemaAST.AST): Parser => {
+      // Declaration callbacks can use public decoders for these ASTs before invoking
+      // this constructor. Register the entry now, but leave its operations lazy.
+      const entry = resolve(ast)
+      return (input, options) => {
+        const parser = entry.makeEffect
+        return parser(input, options)
+      }
+    },
+    { resolve }
+  )
 
 /** @internal */
 export const makeScopedCompiler = (compiler: Compiler): (ast: SchemaAST.AST) => void => {

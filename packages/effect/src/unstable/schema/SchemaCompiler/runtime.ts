@@ -12,8 +12,10 @@ import * as InternalSchemaCause from "../../../internal/schema/cause.ts"
 import { checkOutput, getEncodingChecks } from "../../../internal/schema/checks.ts"
 import {
   type CompiledDecoder,
+  constructorResolver,
   invalid,
   type Is,
+  makeResolveParser,
   type Parser,
   prepareDecode,
   resolve as resolveEntry,
@@ -414,7 +416,7 @@ const makeDetailed = (decode: DetailedDecoder): CompiledDecoder["decodeEffect"] 
       const output = decode(input, options)
       if (isFailure(output)) return Effect.fail(output.issue)
       if (output === InternalParser.missing) return InternalParser.missingExit
-      return InternalParser.succeed(output)
+      return output === input ? InternalParser.unchangedExit : InternalParser.succeed(output)
     } catch (error) {
       return Effect.die(error)
     }
@@ -520,14 +522,14 @@ const makeConstructionContext = (ast: SchemaAST.Objects, resolve: ResolveEntry):
 
 /** @internal */
 const makeClassConstructor = (ast: SchemaAST.AST, resolve: ResolveEntry): Parser =>
-  applyChecks(ast, makeConstructorParser(SchemaAST.getConstructorDescriptor(ast)!, (ast) => resolve(ast).makeEffect))
+  applyChecks(ast, makeConstructorParser(SchemaAST.getConstructorDescriptor(ast)!, constructorResolver(resolve)))
 
 /** @internal */
 const makeLeafConstructor = (ast: SchemaAST.AST): Parser => makeDetailed(compileDetailed(ast))
 
 /** @internal */
 const interpretedDecoder = (ast: SchemaAST.AST, resolve: ResolveEntry): CompiledDecoder =>
-  fromDecode(() => compileInterpreted(ast, (ast) => resolve(ast).parseEffect))
+  fromDecode(() => compileInterpreted(ast, makeResolveParser(resolve)))
 
 /** @internal */
 const withConstructor = (decoder: CompiledDecoder, make: () => Parser): CompiledDecoder =>
@@ -601,6 +603,7 @@ export const runtime = {
   args: InternalParser.args,
   missing: InternalParser.missing,
   missingExit: InternalParser.missingExit,
+  unchangedExit: InternalParser.unchangedExit,
   succeed: InternalParser.succeed,
   die,
   defaultParseOptions,

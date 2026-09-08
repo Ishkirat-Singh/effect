@@ -673,6 +673,9 @@ export const emitComposedObject = (ast: SchemaAST.Objects): string => {
     const property = properties[index]
     const key = typeof property.name === "string" ? JSON.stringify(property.name) : "P[" + index + "].name"
     const value = "v" + index
+    const assignInput = property.name === "__proto__" || typeof property.name !== "string"
+      ? "AP(out," + key + "," + value + ")"
+      : "out[" + key + "]=" + value
     const assignDecoded = property.name === "__proto__" || typeof property.name !== "string"
       ? "AP(out," + key + ",x)"
       : "out[" + key + "]=x"
@@ -680,21 +683,21 @@ export const emitComposedObject = (ast: SchemaAST.Objects): string => {
     if (property.name !== "__proto__" && !isOptional(property.type)) {
       statements.push(
         "let " + value + "=i[" + key + "]",
-        "if(" + value + "===void 0&&!(" + present + "))" + value + "=M"
+        "if(" + value + "===void 0&&!(" + present + "))" + value + "=M;else " + assignInput
       )
     } else {
       statements.push(
         "let " + value,
-        "if(" + present + ")" + value + "=i[" + key + "];else " + value + "=M"
+        "if(" + present + "){" + value + "=i[" + key + "];" + assignInput + "}else " + value + "=M"
       )
     }
     statements.push(
       "r=P[" + index + "].parser(" + value + ",o)",
-      "if(!X(r))return RSC(T,P,i,out," + index +
+      "if(r!==UE){if(!X(r))return RSC(T,P,i,out," + index +
         ",r,o);if(r._tag===\"Failure\")return W(T,i,o," + key +
         ",r);x=r[A];if(x===M){delete out[" + key + "];" +
         (isOptional(property.type) ? "" : "return N(T,i,o,P[" + index + "])") +
-        "}else{" + assignDecoded + "}"
+        "}else{" + assignDecoded + "}}"
     )
   }
   statements.push("return SU(out)")
@@ -703,6 +706,7 @@ export const emitComposedObject = (ast: SchemaAST.Objects): string => {
     O: "hasDefaultObjectOptions",
     M: "missing",
     MX: "missingExit",
+    UE: "unchangedExit",
     IT: "invalidTypeIssue",
     AP: "assignDecodedProperty",
     A: "args",

@@ -762,7 +762,7 @@ export const Declaration: new(
       if (input === InternalParser.missing) return InternalParser.missingExit
       if (run === undefined) {
         // The callback can use public parsers, which must see these scoped entries.
-        for (const typeParameter of this.typeParameters) compile(typeParameter)
+        for (const typeParameter of this.typeParameters) compile.resolve(typeParameter)
         run = this.run(this.typeParameters)
       }
       return run(input, this, options)
@@ -1490,7 +1490,7 @@ export const TemplateLiteral: new(
       if (input === InternalParser.missing) return InternalParser.missingExit
       const result = parser(input, options)
       if ((result as Exit.Exit<unknown, unknown>)._tag === "Success") {
-        return InternalParser.succeed(input)
+        return InternalParser.unchangedExit
       }
       return Effect.mapBothEager(result, {
         onSuccess: () => input,
@@ -2591,12 +2591,16 @@ export const Objects: new(
       s: ObjectParserState,
       key: PropertyKey,
       k2: PropertyKey | typeof InternalParser.missing,
+      inputValue: unknown,
       exitValue: Exit.Exit<unknown, SchemaIssue.Issue>
     ): Effect.Effect<void, SchemaIssue.Issue, any> => {
       if (exitValue._tag === "Failure") {
         return wrapPropertyKeyIssue(s, ast, key, exitValue) ?? Exit.void
       }
-      const value = (exitValue as InternalParser.Success<unknown, SchemaIssue.Issue>)[InternalParser.args]
+      const value = InternalParser.valueOrInput(
+        exitValue as InternalParser.Success<unknown, SchemaIssue.Issue>,
+        inputValue
+      )
       if (k2 !== InternalParser.missing && value !== InternalParser.missing) {
         if (
           hasProperties &&
@@ -2622,12 +2626,15 @@ export const Objects: new(
       if (exitKey._tag === "Failure") {
         return wrapPropertyKeyIssue(s, ast, key, exitKey) ?? Exit.void
       }
-      const k2 = (exitKey as InternalParser.Success<PropertyKey, SchemaIssue.Issue>)[InternalParser.args]
+      const k2 = InternalParser.valueOrInput(
+        exitKey as InternalParser.Success<PropertyKey, SchemaIssue.Issue>,
+        key
+      ) as PropertyKey
       const inputValue = s.input[key]
       const result = index.parserValue(inputValue, s.options)
       return effectIsExit(result)
-        ? finishIndex(s, key, k2, result)
-        : Effect.flatMap(Effect.exit(result), (exit) => finishIndex(s, key, k2, exit))
+        ? finishIndex(s, key, k2, inputValue, result)
+        : Effect.flatMap(Effect.exit(result), (exit) => finishIndex(s, key, k2, inputValue, exit))
     }
     const parseStringIndex = (
       s: ObjectParserState,
@@ -2637,17 +2644,24 @@ export const Objects: new(
       const inputValue = s.input[key]
       const result = index.parserValue(inputValue, s.options)
       return effectIsExit(result)
-        ? finishIndex(s, key, key, result)
-        : Effect.flatMap(Effect.exit(result), (exit) => finishIndex(s, key, key, exit))
+        ? finishIndex(s, key, key, inputValue, result)
+        : Effect.flatMap(Effect.exit(result), (exit) => finishIndex(s, key, key, inputValue, exit))
     }
     const compileMembers = (): Array<ParsedProperty> => {
       if (!properties) {
-        properties = ast.propertySignatures.map((ps) => ({
-          parser: compileConstructorDefault(ps.type),
-          name: ps.name,
-          type: ps.type,
-          valueFirst: ps.name !== "__proto__" && !isOptional(ps.type)
-        }))
+        properties = ast.propertySignatures.map((ps) => {
+          const property: ParsedProperty = {
+            parser(input, options) {
+              const parser = compileConstructorDefault(ps.type)
+              Object.defineProperty(property, "parser", { value: parser })
+              return parser(input, options)
+            },
+            name: ps.name,
+            type: ps.type,
+            valueFirst: ps.name !== "__proto__" && !isOptional(ps.type)
+          }
+          return property
+        })
         indexes = indexCount
           ? ast.indexSignatures.map((is) => ({
             is,
@@ -2777,6 +2791,10 @@ export const Objects: new(
           const exit = property.parser(value, options)
           if (!effectIsExit(exit)) {
             return resumeProperties(state, props, index, exit)
+          }
+          if (exit === InternalParser.unchangedExit) {
+            InternalRecord.assignProperty(out, name, value)
+            continue
           }
           const terminal = stepProperty(state, property, exit)
           if (terminal) return terminal
@@ -4275,10 +4293,10 @@ function fromConst<const T>(
   ast: AST,
   value: T
 ): SchemaParser.Parser {
-  const succeed = InternalParser.succeed(value)
+  const succeed = value === 0 ? InternalParser.unchangedExit : InternalParser.succeed(value)
   return (input, options) => {
     if (input === InternalParser.missing) return InternalParser.missingExit
-    if (input === value) return value === 0 ? InternalParser.succeed(input) : succeed
+    if (input === value) return succeed
     return Effect.fail(new SchemaIssue.InvalidType(ast, input, options))
   }
 }
@@ -4289,7 +4307,7 @@ function fromRefinement<T>(
 ): SchemaParser.Parser {
   return (input, options) => {
     if (input === InternalParser.missing) return InternalParser.missingExit
-    if (refinement(input)) return InternalParser.succeed(input)
+    if (refinement(input)) return InternalParser.unchangedExit
     return Effect.fail(new SchemaIssue.InvalidType(ast, input, options))
   }
 }
@@ -4735,7 +4753,7 @@ export const Json = new Declaration(
   [],
   () => (input, ast, options) =>
     isJson(input) ?
-      InternalParser.succeed(input) :
+      InternalParser.unchangedExit :
       Effect.fail(new SchemaIssue.InvalidType(ast, input, options)),
   {
     representation: {
@@ -4786,7 +4804,7 @@ const StringTree = new Declaration(
   [],
   () => (input, ast, options) =>
     isStringTree(input) ?
-      InternalParser.succeed(input) :
+      InternalParser.unchangedExit :
       Effect.fail(new SchemaIssue.InvalidType(ast, input, options)),
   { expected: "StringTree", toCodecStringTree: () => undefined }
 )

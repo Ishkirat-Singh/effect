@@ -5,6 +5,7 @@ import {
   type CompiledDecoder,
   constructorResolver,
   type Is,
+  makeResolveParser,
   type Parser,
   prepareDecode,
   type ResolveEntry,
@@ -125,7 +126,7 @@ const compileDecoder = (ast: SchemaAST.AST, resolve: ResolveParser): CompiledDec
 
 /** @internal */
 export const compile = (ast: SchemaAST.AST, resolve: ResolveEntry): CompiledDecoder | undefined => {
-  const decoder = compileDecoder(ast, (ast) => resolve(ast).parseEffect)
+  const decoder = compileDecoder(ast, makeResolveParser(resolve))
   let selection: ReturnType<typeof Codegen.selectConstructor>
   try {
     selection = Codegen.selectConstructor(ast)

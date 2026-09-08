@@ -7,7 +7,7 @@ import { effectIsExit } from "../effect.ts"
 import { assignProperty } from "../record.ts"
 import { makeArrayParser } from "./arrays.ts"
 import { wrapPropertyKeyIssue } from "./cause.ts"
-import type { Parser, ResolveEntry } from "./compilerRegistry.ts"
+import { makeResolveParser, type Parser, type ResolveEntry } from "./compilerRegistry.ts"
 import * as Diagnostics from "./diagnostics.ts"
 import { withConstructorDefault } from "./interpreter.ts"
 import { type ObjectParserState, type ParsedProperty, parseProperties } from "./objects.ts"
@@ -22,7 +22,7 @@ export function node(ast: SchemaAST.AST, resolve: ResolveEntry): Parser {
 
 /** @internal */
 export function field(ast: SchemaAST.AST, resolve: ResolveEntry): Parser {
-  return withConstructorDefault(ast, node(ast, resolve), (ast) => node(ast, resolve))
+  return withConstructorDefault(ast, node(ast, resolve), makeResolveParser(resolve, (ast) => node(ast, resolve)))
 }
 
 /** @internal */
@@ -89,7 +89,10 @@ export function objects(
             if (terminal) return yield* terminal
             continue
           }
-          outputKey = result.value
+          outputKey = InternalParser.valueOrInput(
+            result as InternalParser.Success<unknown, SchemaIssue.Issue>,
+            key
+          )
         }
         const effect = member.value(record[key], options)
         const result = effectIsExit(effect) ? effect : yield* Effect.exit(effect)
@@ -98,10 +101,14 @@ export function objects(
           if (terminal) return yield* terminal
           continue
         }
-        if (outputKey === InternalParser.missing || result.value === InternalParser.missing) continue
+        const outputValue = InternalParser.valueOrInput(
+          result as InternalParser.Success<unknown, SchemaIssue.Issue>,
+          record[key]
+        )
+        if (outputKey === InternalParser.missing || outputValue === InternalParser.missing) continue
         const name = outputKey as PropertyKey
         if (fields.length > 0 && (expected.has(key) || expected.has(Diagnostics.normalizeKey(name)))) continue
-        assignProperty(state.out, name, result.value)
+        assignProperty(state.out, name, outputValue)
       }
     }
     if (state.issues && isArrayNonEmpty(state.issues)) {
@@ -113,11 +120,11 @@ export function objects(
 
 /** @internal */
 export function arrays(ast: SchemaAST.Arrays, resolve: ResolveEntry): Parser {
-  return makeArrayParser(ast, (ast) => field(ast, resolve))
+  return makeArrayParser(ast, makeResolveParser(resolve, (ast) => field(ast, resolve)))
 }
 
 /** @internal */
 export function union(ast: SchemaAST.Union, resolve: ResolveEntry): Parser {
   const members = new Map(ast.types.map((ast) => [ast, node(ast, resolve)]))
-  return makeUnionParser(ast, (ast) => members.get(ast)!, true)
+  return makeUnionParser(ast, makeResolveParser(resolve, (ast) => members.get(ast)!), true)
 }

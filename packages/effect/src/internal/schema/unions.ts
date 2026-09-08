@@ -47,6 +47,7 @@ export function makeUnionParser(
       return Effect.fail(new SchemaIssue.AnyOf(ast, state.issues ?? [], input, options))
     }
     return Effect.flatMapEager(eff, (_) => {
+      if (state.out === InternalParser.unchangedExit) return InternalParser.succeed(input)
       if (state.out) return state.out
       return Effect.fail(new SchemaIssue.AnyOf(ast, state.issues ?? [], input, options))
     })

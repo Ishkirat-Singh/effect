@@ -961,6 +961,9 @@ function runParser<T, R>(
   options: SchemaAST.ParseOptions
 ): Effect.Effect<T, SchemaIssue.Issue, R> {
   const result = parser(input, options)
+  if (result === InternalParser.unchangedExit) {
+    return Effect.succeed(input) as Effect.Effect<T, SchemaIssue.Issue, R>
+  }
   if (!effectIsExit(result)) {
     return Effect.flatMapEager(result, getValue)
   }

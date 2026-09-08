@@ -21,7 +21,9 @@ export function makeArrayParser(ast: Arrays, compile: SchemaParser.Compiler): Sc
     tailThreshold: number,
     index: number
   ): { readonly ast: AST; readonly parser: SchemaParser.Parser } {
-    return Diagnostics.getTupleElement(elements!, rest!, tailThreshold, index)
+    if (index < elementLen) return elements![index]
+    if (index >= tailThreshold) return rest![index - tailThreshold + 1]
+    return rest![0]
   }
 
   return Effect.fnUntracedEager(function*(input, options) {
@@ -34,8 +36,19 @@ export function makeArrayParser(ast: Arrays, compile: SchemaParser.Compiler): Sc
       return yield* Effect.fail(new SchemaIssue.InvalidType(ast, input, options))
     }
     if (!elements) {
-      elements = ast.elements.map((ast) => ({ ast, parser: compile(ast) }))
-      rest = ast.rest.map((ast) => ({ ast, parser: compile(ast) }))
+      const makeElement = (ast: AST): ElementParser => {
+        const out: ElementParser = {
+          ast,
+          parser(input, options) {
+            const parser = compile(ast)
+            Object.defineProperty(out, "parser", { value: parser })
+            return parser(input, options)
+          }
+        }
+        return out
+      }
+      elements = ast.elements.map(makeElement)
+      rest = ast.rest.map(makeElement)
     }
 
     const len = input.length
@@ -93,11 +106,13 @@ const parseArray = iterateEager<{
     const value = i < s.len ? item : InternalParser.missing
     return s.getParser(s.tailThreshold, i).parser(value, s.options)
   },
-  step(s, _item, exit, i) {
+  step(s, item, exit, i) {
     if (exit._tag === "Failure") {
       return wrapPropertyKeyIssue(s, s.ast, i, exit)
     }
-    const value = (exit as InternalParser.Success<unknown, SchemaIssue.Issue>)[InternalParser.args]
+    const value = exit === InternalParser.unchangedExit
+      ? item
+      : (exit as InternalParser.Success<unknown, SchemaIssue.Issue>)[InternalParser.args]
     if (value !== InternalParser.missing) {
       s.output[i] = value
     } else {

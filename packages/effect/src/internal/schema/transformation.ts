@@ -10,12 +10,16 @@ import * as InternalParser from "./parser.ts"
 /** @internal */
 export function applyTransformation(
   result: Effect.Effect<unknown, SchemaIssue.Issue, unknown>,
+  input: unknown,
   transformation: SchemaAST.Link["transformation"],
   options: SchemaAST.ParseOptions
 ): Effect.Effect<Option.Option<unknown>, SchemaIssue.Issue, unknown> {
   if (effectIsExit(result) && result._tag === "Success") {
     const optional = InternalParser.toOption(
-      (result as InternalParser.Success<unknown, SchemaIssue.Issue>)[InternalParser.args]
+      InternalParser.valueOrInput(
+        result as InternalParser.Success<unknown, SchemaIssue.Issue>,
+        input
+      )
     )
     return transformation._tag === "Transformation"
       ? transformation.decode.run(optional, options)
@@ -44,15 +48,17 @@ export const makeEncoding = (
   local: Parser
 ): Parser =>
 (input, options) => {
+  let current = input
   let result = parsers[parsers.length - 1](input, options)
   for (let index = links.length - 1; index >= 0; index--) {
-    let transformed = applyTransformation(result, links[index].transformation, options)
+    let transformed = applyTransformation(result, current, links[index].transformation, options)
     const next = index === 0 ? local : parsers[index - 1]
     if (effectIsExit(transformed) && transformed._tag === "Success") {
       const optional = (transformed as InternalParser.Success<Option.Option<unknown>, SchemaIssue.Issue>)[
         InternalParser.args
       ]
-      result = next(fromOption(optional), options)
+      current = fromOption(optional)
+      result = next(current, options)
     } else {
       if (index === 0) {
         transformed = Effect.catchCause(
@@ -63,8 +69,11 @@ export const makeEncoding = (
             )
         )
       }
-      result = Effect.flatMapEager(transformed, (optional) => next(fromOption(optional), options))
+      result = Effect.flatMapEager(transformed, (optional) => {
+        const value = fromOption(optional)
+        return InternalParser.materialize(next(value, options), value)
+      })
     }
   }
-  return result
+  return InternalParser.materialize(result, current)
 }
