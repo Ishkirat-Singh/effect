@@ -4,7 +4,7 @@
 
 Base: `origin/v3` (`2e471d9cec31889cd6548aa5423b64c2b85238be`)
 
-Head: `origin/main` (`5a802043984727b0c5a291af39d1b9bbfa8d7b8b`)
+Head: `HEAD` (`23ef385e7082e115d34e4e6f3cc6727e85b6b1ba`)
 
 This file is generated from the API diff and `migration/annotations/*.yaml`.
 
@@ -7156,11 +7156,17 @@ effect/unstable/rpc/Utils (barrel: effect/unstable/rpc)
 
 ### `@effect/platform/HttpServer`
 
+- `HttpServer.Address` -> `effect/unstable/net/NetAddress#SocketAddress`: Replaced by the shared concrete internet-or-Unix socket address union.
+
 - `HttpServer.HttpServer` -> `HttpServer.HttpServer`: The interface and tag became one Context.Service class; use its Service member for implementations.
 
 - `HttpServer.ServeOptions` -> `none`: The unused respond option model was removed with no shared v4 counterpart.
 
+- `HttpServer.TcpAddress` -> `effect/unstable/net/NetAddress#InetAddress`: Replaced by the shared resolved internet-address model; use address and port instead of hostname and port.
+
 - `HttpServer.TypeId` -> `none`: The public TypeId was removed; HttpServer is now a Context.Service class.
+
+- `HttpServer.UnixAddress` -> `effect/unstable/net/NetAddress#UnixPathAddress`: Replaced by the shared Unix filesystem-path address model.
 
 - `HttpServer.addressWith` -> `HttpServer.HttpServer.use(({ address }) => effect(address))`: The accessor was removed; read the service and pass its Address to the callback.
 
@@ -7434,7 +7440,13 @@ effect/unstable/rpc/Utils (barrel: effect/unstable/rpc)
 
 ### `@effect/platform/SocketServer`
 
+- `SocketServer.Address` -> `effect/unstable/net/NetAddress#SocketAddress`: Replaced by the shared concrete internet-or-Unix socket address union.
+
 - `SocketServer.ErrorTypeId` -> `SocketServer.ErrorTypeId`: The API moved to effect/unstable/socket/SocketServer and retains this name.
+
+- `SocketServer.TcpAddress` -> `effect/unstable/net/NetAddress#InetAddress`: Replaced by the shared resolved internet-address model; use address and port instead of hostname and port.
+
+- `SocketServer.UnixAddress` -> `effect/unstable/net/NetAddress#UnixPathAddress`: Replaced by the shared Unix filesystem-path address model.
 
 ### `@effect/platform/Template`
 
@@ -7459,6 +7471,8 @@ effect/unstable/rpc/Utils (barrel: effect/unstable/rpc)
 - `Transferable.unsafeMakeCollector` -> `Transferable.makeCollectorUnsafe`: The unsafe collector constructor was renamed.
 
 ### `@effect/platform/Url`
+
+- `Url.fromString`: TODO: needs guidance
 
 - `Url.setUrlParams` -> `Url.setUrlParams`: Retained and widened to accept UrlParams.Input.
 
@@ -14875,7 +14889,7 @@ Schema.toFormatter(schema)
 
 - `SchemaAST.ArbitraryAnnotationId` -> `Schema.Annotations.ToArbitrary`: Symbol annotation IDs were removed. Declarations use the toCodecArbitrary annotation; filters use arbitraryConstraint.
 
-- `SchemaAST.BatchingAnnotation` -> `none`: Per-schema batching annotations were removed; control asynchronous parsing with ParseOptions.concurrency.
+- `SchemaAST.BatchingAnnotation` -> `none`: Per-schema batching annotations were removed. Composite schemas parse children sequentially; use Effect combinators to coordinate independent parsing operations.
 
 - `SchemaAST.BatchingAnnotationId` -> `none`: Symbol annotation IDs were removed and batching is no longer a schema annotation.
 
@@ -14891,9 +14905,9 @@ Schema.toFormatter(schema)
 
 - `SchemaAST.ComposeTransformation` -> `SchemaAST.Encoding`: The marker transformation was replaced by explicit SchemaAST.Link encoding chains.
 
-- `SchemaAST.ConcurrencyAnnotation` -> `SchemaAST.ParseOptions["concurrency"]`: Concurrency is now a parse option rather than its own annotation type.
+- `SchemaAST.ConcurrencyAnnotation` -> `none`: Schema parsing concurrency was removed. Composite schemas parse children sequentially; use Effect concurrency combinators around independent parsing operations.
 
-- `SchemaAST.ConcurrencyAnnotationId` -> `Schema.Annotations.Bottom["parseOptions"]`: Symbol annotation IDs were removed; put concurrency inside the parseOptions annotation.
+- `SchemaAST.ConcurrencyAnnotationId` -> `none`: Schema parsing concurrency was removed. Composite schemas parse children sequentially; use Effect concurrency combinators around independent parsing operations.
 
 - `SchemaAST.Declaration` -> `SchemaAST.Declaration`: The name remains, but its constructor and fields changed in the v4 Base/check/context/encoding model.
 
@@ -14969,9 +14983,9 @@ Schema.toFormatter(schema)
 
 - `SchemaAST.ParseJsonSchemaId` -> `Schema.UnknownFromJsonString`: Use the built-in JSON string codec instead of checking the old schema ID.
 
-- `SchemaAST.ParseOptions` -> `SchemaAST.ParseOptions`: The name remains, but its constructor and fields changed in the v4 Base/check/context/encoding model.
+- `SchemaAST.ParseOptions` -> `SchemaAST.ParseOptions`: Pass parsing options at runtime. onExcessProperty supports ignore or error, not preserve; model extra values with an explicit Record or StructWithRest. The concurrency and propertyOrder options were removed. Output key order is unspecified, including in values passed to checks. Handle required presentation or serialization order explicitly outside the parser.
 
-- `SchemaAST.ParseOptionsAnnotationId` -> `Schema.Annotations.Bottom["parseOptions"]`: Symbol annotation IDs were removed; use the parseOptions key.
+- `SchemaAST.ParseOptionsAnnotationId` -> `none`: Parse options are no longer schema annotations. Pass options when creating or calling a decoder or encoder; there is no annotation-based override for nested schemas.
 
 - `SchemaAST.PrettyAnnotationId` -> `Schema.overrideToFormatter`: The symbol annotation was removed; attach custom formatters with Schema.overrideToFormatter.
 
@@ -15015,13 +15029,13 @@ Schema.toFormatter(schema)
 
 - `SchemaAST.TypeConstructorAnnotationId` -> `Schema.Annotations.Declaration["toCodec"]`: Symbol annotation IDs were removed; use declaration codec annotation keys.
 
-- `SchemaAST.TypeLiteral` -> `SchemaAST.Objects`: The v4 SchemaAST redesign renamed this primitive, collection, or guard while preserving its role.
+- `SchemaAST.TypeLiteral` -> `SchemaAST.Objects`: Use Objects(propertySignatures, indexSignatures, annotations?, checks?, encoding?, context?, encodingChecks?). Output key order is unspecified; there is no property-order option.
 
 - `SchemaAST.TypeLiteralTransformation` -> `SchemaAST.Encoding`: Object transformations are encoding links; use Schema.encodeKeys for key mappings.
 
 - `SchemaAST.UndefinedKeyword` -> `SchemaAST.Undefined`: The v4 SchemaAST redesign renamed this primitive, collection, or guard while preserving its role.
 
-- `SchemaAST.Union` -> `SchemaAST.Union`: The name remains, but its constructor and fields changed in the v4 Base/check/context/encoding model.
+- `SchemaAST.Union` -> `SchemaAST.Union`: Pass member ASTs and an optional options object: new SchemaAST.Union(types, { mode: 'oneOf' }). Read options.mode, defaulting to 'anyOf', instead of a direct mode field.
 
 - `SchemaAST.UniqueSymbol` -> `SchemaAST.UniqueSymbol`: The name remains, but its constructor and fields changed in the v4 Base/check/context/encoding model.
 
@@ -15047,13 +15061,13 @@ Schema.toFormatter(schema)
 
 - `SchemaAST.getAnnotation` -> `SchemaAST.resolveAt`: Resolve string-keyed annotations with resolveAt, or use resolveIdentifier, resolveTitle, and resolveDescription.
 
-- `SchemaAST.getBatchingAnnotation` -> `none`: Batching annotations were removed; read ParseOptions.concurrency when controlling asynchronous parsing.
+- `SchemaAST.getBatchingAnnotation` -> `none`: Batching annotations were removed. Composite schemas parse children sequentially; use Effect combinators to coordinate independent parsing operations.
 
 - `SchemaAST.getBrandAnnotation` -> `SchemaAST.resolveAt("brands")`: Resolve the string-keyed brands annotation.
 
 - `SchemaAST.getCompiler` -> `none`: The Match-based compiler was removed; traverse SchemaAST.AST directly or use the relevant Schema derivation API.
 
-- `SchemaAST.getConcurrencyAnnotation` -> `SchemaAST.resolveAt("parseOptions")`: Resolve parseOptions and read concurrency from it.
+- `SchemaAST.getConcurrencyAnnotation` -> `none`: Schema parsing concurrency and its annotations were removed. Use Effect concurrency combinators around independent parsing operations.
 
 - `SchemaAST.getDecodingFallbackAnnotation` -> `none`: Fallbacks are encoding middleware in v4, not readable annotations; attach them with Schema.catchDecoding.
 
@@ -15079,7 +15093,7 @@ Schema.toFormatter(schema)
 
 - `SchemaAST.getParseIssueTitleAnnotation` -> `none`: Issue-title callbacks were removed; use message or expected annotations and SchemaIssue formatters.
 
-- `SchemaAST.getParseOptionsAnnotation` -> `SchemaAST.resolveAt("parseOptions")`: Resolve the string-keyed parseOptions annotation.
+- `SchemaAST.getParseOptionsAnnotation` -> `none`: Parse options are no longer schema annotations. Pass options when creating or calling a decoder or encoder; there is no annotation-based override for nested schemas.
 
 - `SchemaAST.getPropertySignatures` -> `SchemaAST.Objects.propertySignatures`: Narrow to Objects and read propertySignatures directly.
 
@@ -16059,6 +16073,8 @@ switch (strategy) {
 - `TMap.remove` -> `TxHashMap.remove`: Import TxHashMap from "effect/TxHashMap"; the operation keeps its name. V4 Tx operations return ordinary Effects; compose multiple operations under one outer Effect.tx to keep them atomic.
 
 - `TMap.removeAll` -> `TxHashMap.removeMany`: The bulk removal operation was renamed.
+
+- `TMap.set`: TODO: needs guidance
 
 - `TMap.setIfAbsent` -> `Effect.tx + TxHashMap.get/TxHashMap.set`: No direct helper remains; check and conditionally set under one outer transaction.
 
