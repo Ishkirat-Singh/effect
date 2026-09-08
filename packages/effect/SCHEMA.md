@@ -51,7 +51,7 @@ Values are median microseconds per operation and lower is better. Results vary
 between machines; cross-library comparisons are diagnostic. A dash means that
 the upstream adapter does not provide that benchmark.
 
-Measured on 2026-09-07 with the current construction-registry implementation,
+Measured on 2026-09-08 with the current construction-registry implementation,
 using Node 24.12.0, V8 13.6.233.17-node.37, Apple M3, macOS arm64,
 Valibot 1.4.2, and Zod 4.5.4. Each case uses five fresh processes,
 300 ms measurement, 100 ms warmup, and automatically calibrated batches.
@@ -64,22 +64,22 @@ pnpm runtimeperf schema-benchmarks --rounds 5 --time 300 --warmup-time 100
 
 | Scenario                              | Effect interpreted | Valibot |  Zod 4 |
 | ------------------------------------- | -----------------: | ------: | -----: |
-| Create a schema                       |              74.98 |   33.12 |  94.45 |
-| Create a schema and parser            |              75.55 |       — |      — |
-| Validate valid data                   |               4.76 |    5.17 |      — |
-| Validate invalid data                 |             0.2603 |  0.2402 |      — |
-| Parse valid data and collect errors   |               5.44 |    5.26 |   7.08 |
-| Parse invalid data and collect errors |               7.98 |   15.42 |  22.81 |
-| Parse valid data and stop early       |               4.88 |    5.10 |      — |
-| Parse invalid data and stop early     |             0.2714 |  0.2443 |      — |
-| Standard Schema, valid data           |               5.94 |    5.12 |   3.54 |
-| Standard Schema, invalid data         |              12.42 |   15.61 |  17.52 |
-| Standard Schema, valid, stop early    |               5.23 |       — |      — |
-| Standard Schema, invalid, stop early  |             0.7911 |       — |      — |
-| Encode with a typed codec             |             0.0974 |       — | 0.0425 |
-| Decode with a typed codec             |             0.0951 |       — | 0.0476 |
-| Encode unknown input                  |             0.0981 |       — |      — |
-| Decode unknown input                  |             0.0956 |       — |      — |
+| Create a schema                       |              99.95 |   32.28 | 100.07 |
+| Create a schema and parser            |              80.36 |       — |      — |
+| Validate valid data                   |               4.33 |    5.08 |      — |
+| Validate invalid data                 |             0.2514 |  0.2350 |      — |
+| Parse valid data and collect errors   |               5.20 |    5.10 |   7.04 |
+| Parse invalid data and collect errors |               7.71 |   15.42 |  22.55 |
+| Parse valid data and stop early       |               4.39 |    5.10 |      — |
+| Parse invalid data and stop early     |             0.2273 |  0.2458 |      — |
+| Standard Schema, valid data           |               5.51 |    5.15 |   3.56 |
+| Standard Schema, invalid data         |              12.07 |   15.45 |  17.65 |
+| Standard Schema, valid, stop early    |               4.73 |       — |      — |
+| Standard Schema, invalid, stop early  |             0.7947 |       — |      — |
+| Encode with a typed codec             |             0.0833 |       — | 0.0424 |
+| Decode with a typed codec             |             0.0898 |       — | 0.0475 |
+| Encode unknown input                  |             0.0832 |       — |      — |
+| Decode unknown input                  |             0.0889 |       — |      — |
 
 ### Runtime compilation
 
@@ -128,17 +128,18 @@ only the decoder operations, not these internal fields.
 
 On first use, a parser reuses the cached entry or creates and caches a compiled
 or interpreted decoder. Children use the same cache, so an interpreted parent
-can have compiled children. The internal child resolver returns entries; decoding
-selects `parseEffect`, construction selects `makeEffect`. Selective compilation
-remains active for children even when their parent uses an interpreted constructor.
-All operations are lazy, so recursive children resolve after their parent entry
-has been installed. No separate constructor cache or recursive placeholder cache
-is needed.
+can have compiled children. Internal decoding resolves the entry's raw parser;
+the public `parseEffect` boundary materializes its successful output. Construction
+resolves `makeEffect` instead. Selective compilation remains active for children
+even when their parent uses an interpreted constructor. All operations are lazy,
+so recursive children resolve after their parent entry has been installed. No
+separate constructor cache or recursive placeholder cache is needed.
 
-On first use of a Declaration, its declared type parameters are prepared through
-the same resolver before its callback runs. Their operations remain lazy. This
-lets callbacks using public parsers find selectively compiled children; new ASTs
-created inside a callback follow the normal registry policy.
+On first use of a Declaration, its declared type parameters are registered through
+the entry lookup carried by the same resolver before its callback runs. Their
+operations remain lazy. This lets callbacks using public parsers find selectively
+compiled children; new ASTs created inside a callback follow the normal registry
+policy.
 
 Choose how to populate it:
 
@@ -321,7 +322,7 @@ Keep these installation requirements in mind:
 
 ##### Construction
 
-Measured on 2026-09-07, Node 24.12.0, V8 13.6, Apple M3, macOS arm64.
+Measured on 2026-09-08, Node 24.12.0, V8 13.6, Apple M3, macOS arm64.
 Median ns/op through `SchemaParser.make`; nine isolated rounds, 500 ms measurement
 and 150 ms warmup. Interpreted/JIT use calibrated batches; AOT uses batch 256
 with dynamic code generation disabled and a separate fixture call site.
@@ -330,12 +331,12 @@ installation for AOT.
 
 | Case                                 | Interpreted |    JIT |    AOT |
 | ------------------------------------ | ----------: | -----: | -----: |
-| Struct, two fields                   |        83.6 |   43.0 |   39.1 |
-| Struct, constructor default          |       106.2 |   67.9 |   64.8 |
-| Array of 32 Structs                  |      1092.7 | 1026.7 | 1010.1 |
-| Union, missing discriminant default  |       126.9 |   97.2 |   96.4 |
-| Class, plain input                   |       165.2 |  162.3 |  160.4 |
-| Schema creation + first construction |      2798.3 | 6340.5 | 4177.3 |
+| Struct, two fields                   |        59.7 |   33.7 |   30.9 |
+| Struct, constructor default          |       101.2 |   65.8 |   63.4 |
+| Array of 32 Structs                  |       792.1 |  811.8 |  801.4 |
+| Union, missing discriminant default  |       119.4 |   95.6 |   92.4 |
+| Class, plain input                   |       156.3 |  155.6 |  151.8 |
+| Schema creation + first construction |      3092.5 | 6857.0 | 4286.7 |
 
 Retained parser heap, KiB/schema, for
 `Struct({ a: String, b: Number.withConstructorDefault(succeed(1)) })`.
@@ -348,13 +349,13 @@ These are retained V8 heap values, not peak or all native executable-code memory
 
 | Operations used | Interpreted |  JIT |   AOT |
 | --------------- | ----------: | ---: | ----: |
-| make            |        2.71 | 5.12 |  8.54 |
-| decode          |        1.91 | 2.28 |  5.01 |
-| make + decode   |        4.32 | 5.48 | 10.40 |
+| make            |        2.78 | 5.24 |  8.69 |
+| decode          |        1.83 | 2.35 |  5.01 |
+| make + decode   |        4.33 | 5.60 | 10.55 |
 
 ##### Decoding and type guards
 
-Measured on 2026-09-07 on the same source revision as the construction snapshot.
+Measured on 2026-09-08 on the same source revision as the construction snapshot.
 All measurements use public `SchemaParser` APIs on Node 24.12.0, V8 13.6,
 Apple M3, macOS arm64. The current snapshot includes every scenario in the
 `schema-compiler` suite, not just the Moltar objects.
@@ -369,20 +370,20 @@ AOT are not a general ranking.
 
 | Case                        | Interpreted |    JIT |    AOT |
 | --------------------------- | ----------: | -----: | -----: |
-| parseSafe, valid            |       346.1 |    5.8 |    5.9 |
-| parseSafe, extra property   |       344.7 |    5.9 |    5.9 |
-| parseSafe, invalid          |      2949.1 | 2823.8 | 3080.0 |
-| assertLoose, valid          |       346.4 |    3.6 |    3.6 |
-| assertLoose, extra property |       346.0 |    3.6 |    3.6 |
-| assertLoose, invalid        |       135.2 |    3.0 |    1.7 |
+| parseSafe, valid            |       265.5 |    5.8 |    5.9 |
+| parseSafe, extra property   |       265.3 |    5.9 |    5.9 |
+| parseSafe, invalid          |      2770.0 | 2840.0 | 3082.8 |
+| assertLoose, valid          |       266.6 |    3.3 |    3.3 |
+| assertLoose, extra property |       266.7 |    3.3 |    3.3 |
+| assertLoose, invalid        |       118.7 |    3.0 |    1.4 |
 
 Schema creation plus first use, median µs/op, five processes per case. AOT was
 not measured in this fixture. Creation and first use are measured together.
 
 | Case        | Interpreted |   JIT |
 | ----------- | ----------: | ----: |
-| parseSafe   |        7.90 | 11.12 |
-| assertLoose |        8.07 | 11.17 |
+| parseSafe   |        7.52 | 11.31 |
+| assertLoose |       10.02 | 11.54 |
 
 ###### Other schema shapes
 
@@ -391,37 +392,37 @@ All 31 scenarios in `schema-compiler`, median ns/op from five processes per case
 
 | Scenario                             | Interpreted |       JIT |
 | ------------------------------------ | ----------: | --------: |
-| `declaration-set-valid`              |      3468.2 |    1436.3 |
-| `checked-transformed-struct-valid`   |      2188.1 |    1412.0 |
-| `checked-transformed-struct-invalid` |      6500.4 |    5613.4 |
-| `sync-decode-valid`                  |       109.0 |       6.7 |
-| `sync-encode-valid`                  |       109.3 |       6.7 |
-| `strict-record-1024-valid`           |    226738.9 |  203431.1 |
-| `strict-record-4096-valid`           |    739006.2 |  758462.5 |
-| `strict-record-4096-invalid`         |    745461.3 | 1449419.9 |
-| `array-100-valid`                    |      1477.8 |     127.3 |
-| `array-100-invalid-last`             |      6729.2 |    4447.5 |
-| `tuple-rest-valid`                   |       626.0 |      39.9 |
-| `optional-struct-valid`              |      1278.3 |      19.5 |
-| `record-valid`                       |      4802.2 |     669.6 |
-| `template-record-valid`              |     10632.1 |    4054.5 |
-| `struct-with-record-valid`           |      1753.4 |     741.0 |
-| `number-record-valid`                |      5731.8 |    5067.0 |
-| `transformed-key-record-valid`       |      4433.2 |    4530.8 |
-| `encoding-checked-struct-valid`      |       976.3 |      31.1 |
+| `declaration-set-valid`              |      2757.8 |    1393.7 |
+| `checked-transformed-struct-valid`   |      1712.1 |    1034.3 |
+| `checked-transformed-struct-invalid` |      6067.8 |    5252.9 |
+| `sync-decode-valid`                  |        79.1 |       6.8 |
+| `sync-encode-valid`                  |        78.1 |       6.7 |
+| `strict-record-1024-valid`           |    203883.2 |  206146.6 |
+| `strict-record-4096-valid`           |    680157.5 |  758954.0 |
+| `strict-record-4096-invalid`         |    683783.0 | 1421426.9 |
+| `array-100-valid`                    |       704.8 |     126.5 |
+| `array-100-invalid-last`             |      6181.0 |    4453.2 |
+| `tuple-rest-valid`                   |       478.3 |      40.0 |
+| `optional-struct-valid`              |      1154.6 |      19.5 |
+| `record-valid`                       |      3817.9 |     665.9 |
+| `template-record-valid`              |      9185.1 |    4052.9 |
+| `struct-with-record-valid`           |      1384.0 |     724.8 |
+| `number-record-valid`                |      4907.4 |    4547.7 |
+| `transformed-key-record-valid`       |      3575.2 |    3528.8 |
+| `encoding-checked-struct-valid`      |       779.2 |      30.9 |
 | `literal-100-valid-last`             |        33.2 |      10.0 |
-| `literal-100-invalid`                |      3235.0 |    3412.0 |
-| `tagged-union-100-valid-last`        |       132.5 |      27.2 |
-| `tagged-union-100-invalid`           |      3262.1 |    3381.5 |
-| `checked-string-valid`               |        19.9 |       8.8 |
-| `template-literal-valid`             |       176.7 |      48.3 |
-| `transformation-struct-valid`        |      2534.7 |    1498.0 |
-| `transformation-root-valid`          |        41.4 |      41.9 |
-| `transformation-root-invalid`        |      3334.0 |    3625.8 |
-| `transformation-uppercase-valid`     |        52.6 |      52.5 |
-| `transformation-output-invalid`      |      3319.9 |    3637.2 |
-| `middleware-struct-valid`            |      2464.3 |     384.8 |
-| `recursive-node-valid`               |     14906.1 |   10527.1 |
+| `literal-100-invalid`                |      3247.7 |    3402.2 |
+| `tagged-union-100-valid-last`        |       113.0 |      27.1 |
+| `tagged-union-100-invalid`           |      3236.4 |    3456.3 |
+| `checked-string-valid`               |        20.0 |       8.9 |
+| `template-literal-valid`             |       161.8 |      48.2 |
+| `transformation-struct-valid`        |      1856.8 |    1271.6 |
+| `transformation-root-valid`          |        38.8 |      38.5 |
+| `transformation-root-invalid`        |      3531.6 |    3618.9 |
+| `transformation-uppercase-valid`     |        47.3 |      47.4 |
+| `transformation-output-invalid`      |      3542.5 |    3590.8 |
+| `middleware-struct-valid`            |      1961.3 |     381.6 |
+| `recursive-node-valid`               |     13543.7 |    8117.6 |
 
 ###### Memory and first-use CPU
 
@@ -438,9 +439,9 @@ These are retained V8 heap values, not peak memory, RSS, or all native code memo
 
 | Mode        | Construction | First use | Total |
 | ----------- | -----------: | --------: | ----: |
-| Interpreted |         3217 |      3059 |  6276 |
-| JIT         |         3217 |      2341 |  5558 |
-| AOT         |         3212 |      5985 |  9197 |
+| Interpreted |         3208 |      3018 |  6226 |
+| JIT         |         3208 |      2425 |  5634 |
+| AOT         |         3203 |      5991 |  9194 |
 
 First use, median µs/schema within the 1,000-schema batch, including AOT
 installation. Schema construction, imports and GC are outside the timed region.
@@ -449,9 +450,9 @@ measured separately.
 
 | Mode        | Wall time | Process CPU |
 | ----------- | --------: | ----------: |
-| Interpreted |      4.03 |        9.43 |
-| JIT         |      8.14 |       14.58 |
-| AOT         |     49.44 |       52.02 |
+| Interpreted |      4.66 |        9.92 |
+| JIT         |      8.56 |       15.15 |
+| AOT         |     48.86 |       51.54 |
 
 Coverage of the accompanying revision comparison: all 191 Effect cases in the
 runtimeperf registry, including the 54 interpreter diagnostics and 31 Arbitrary
