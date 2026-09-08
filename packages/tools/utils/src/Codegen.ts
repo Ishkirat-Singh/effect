@@ -58,9 +58,7 @@ const findAnnotation = (content: string): { pattern: string; offset: number } | 
 }
 
 const parseAnnotation = (line: string): string | undefined => {
-  // Extglob patterns can contain parentheses, so capture through the final
-  // closing parenthesis before the annotation suffix.
-  const match = line.match(/^\/\/\s*@barrel(?:\((.+)\))?(?::|$)/)
+  const match = line.match(/^\/\/\s*@barrel(?:\((.+?)\))?/)
   if (!match) {
     return undefined
   }
