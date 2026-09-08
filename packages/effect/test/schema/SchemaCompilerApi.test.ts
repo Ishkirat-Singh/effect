@@ -99,6 +99,19 @@ describe("SchemaCompiler", () => {
     strictEqual(reads, 2)
   })
 
+  it("uses an installed child decoder from an interpreted Array", () => {
+    const child = Schema.String.annotate({ title: "installed array child" })
+    SchemaCompiler.set(child.ast, {
+      validate: (input) => typeof input === "string" ? `${input}!` : SchemaCompiler.invalid,
+      decodeEffect: (input) => Effect.succeed(`${input}!`)
+    })
+
+    deepStrictEqual(
+      SchemaParser.decodeUnknownSync(Schema.Array(child))(["a"]),
+      ["a!"]
+    )
+  })
+
   it("exposes the canonical missing value to installed decoders", () => {
     const schema = Schema.Struct({ value: Schema.optionalKey(Schema.String) })
     assert(schema.ast._tag === "Objects")

@@ -696,6 +696,24 @@ describe("SchemaParser", () => {
       strictEqual(calls.join(","), "a,b,c")
     })
 
+    it("does not replay eager elements after encountering a suspended transformation", () => {
+      const calls: Array<string> = []
+      const element = (name: string, suspended = false) =>
+        Schema.String.pipe(Schema.decode({
+          decode: new SchemaGetter.Getter((input) => {
+            calls.push(name)
+            return suspended ? Effect.suspend(() => Effect.succeed(input)) : Effect.succeed(input)
+          }),
+          encode: SchemaGetter.passthrough()
+        }))
+      const schema = Schema.Tuple([element("a"), element("b", true), element("c")])
+
+      const exit = SchemaParser.decodeUnknownExit(schema)(["a", "b", "c"])
+
+      assertTrue(Exit.isSuccess(exit))
+      strictEqual(calls.join(","), "a,b,c")
+    })
+
     it("converts synchronous property parser throws into defects", () => {
       const field = Schema.declareConstructor<string>()([], () => () => {
         throw new Error("property defect")
